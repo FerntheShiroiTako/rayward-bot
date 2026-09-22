@@ -141,6 +141,8 @@ def build_review_embed(row: ReviewRow, *, report: bool = False, resolution: str 
         title = f"{kind} #{row.id} · {row.status_name}"
         color = _case_color(row)
     e = discord.Embed(title=title, color=color)
+    if row.avatar_url:
+        e.set_thumbnail(url=row.avatar_url)
 
     e.add_field(name="Member", value=f"<@{row.discord_id}>\n`{row.discord_id}`", inline=True)
     if row.roblox_id:

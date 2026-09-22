@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS review_queue (
     raw_redacted_at    TEXT,
     last_seen_at       TEXT,
     seen_count         INTEGER NOT NULL DEFAULT 1,
-    identity_source    TEXT    NOT NULL DEFAULT 'nickname'
+    identity_source    TEXT    NOT NULL DEFAULT 'nickname',
+    avatar_url         TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS review_queue_one_pending
     ON review_queue(guild_id, discord_id, COALESCE(roblox_id, -1)) WHERE status = 'pending';
@@ -241,6 +242,7 @@ class ReviewRow:
     last_seen_at: datetime | None = None
     seen_count: int = 1
     identity_source: str = "nickname"
+    avatar_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -316,6 +318,7 @@ class Store:
             ("guild_settings", "log_forum_channel_id", "INTEGER"),
             ("guild_settings", "master_role_id", "INTEGER"),
             ("guild_settings", "configurator_role_id", "INTEGER"),
+            ("review_queue", "avatar_url", "TEXT"),
         ):
             existing = {r["name"] for r in self._conn.execute(f"PRAGMA table_info({table})")}
             if not existing or column in existing:
@@ -555,6 +558,7 @@ class Store:
             last_seen_at=_dt(r["last_seen_at"]),
             seen_count=r["seen_count"],
             identity_source=r["identity_source"],
+            avatar_url=r["avatar_url"],
         )
 
     def record_report(
@@ -573,6 +577,7 @@ class Store:
         summary: str,
         at: datetime,
         identity_source: str = "nickname",
+        avatar_url: str | None = None,
     ) -> tuple[ReviewRow, bool]:
         """Report-only mode. Returns (row, created). A repeat detection of the same member + Roblox id + status
         updates the existing row (last_seen_at, seen_count) instead of creating a new one."""
@@ -581,10 +586,10 @@ class Store:
                 cur = self._exec(
                     """INSERT INTO review_queue(guild_id, discord_id, roblox_id, roblox_username, provider, outcome,
                        status_name, reason, nickname, raw_response_json, summary, status, created_at, last_seen_at,
-                       seen_count, identity_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reported', ?, ?, 1, ?)""",
+                       seen_count, identity_source, avatar_url)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reported', ?, ?, 1, ?, ?)""",
                     (guild_id, discord_id, roblox_id, roblox_username, provider, outcome, status_name, reason,
-                     nickname, raw_response_json, summary, _ts(at), _ts(at), identity_source),
+                     nickname, raw_response_json, summary, _ts(at), _ts(at), identity_source, avatar_url),
                 )
                 return self.get_review(guild_id, cur.lastrowid), True  # type: ignore[arg-type]
             except sqlite3.IntegrityError:
@@ -623,16 +628,18 @@ class Store:
         summary: str,
         at: datetime,
         identity_source: str = "nickname",
+        avatar_url: str | None = None,
     ) -> tuple[ReviewRow, bool]:
         """Returns (row, created). Never creates a second pending row for the same member + Roblox id."""
         with self._lock:
             try:
                 cur = self._exec(
                     """INSERT INTO review_queue(guild_id, discord_id, roblox_id, roblox_username, provider, outcome,
-                       status_name, reason, nickname, raw_response_json, summary, status, created_at, identity_source)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)""",
+                       status_name, reason, nickname, raw_response_json, summary, status, created_at, identity_source,
+                       avatar_url)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)""",
                     (guild_id, discord_id, roblox_id, roblox_username, provider, outcome, status_name, reason,
-                     nickname, raw_response_json, summary, _ts(at), identity_source),
+                     nickname, raw_response_json, summary, _ts(at), identity_source, avatar_url),
                 )
                 return self.get_review(guild_id, cur.lastrowid), True  # type: ignore[arg-type]
             except sqlite3.IntegrityError:

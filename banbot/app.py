@@ -30,6 +30,7 @@ from .review import ReviewPoster, ReviewQueue
 from .roblox import HttpRobloxResolver, RobloxResolver
 from .store import Store
 from .sweep import SweepRunner
+from .thumbnails import HttpRobloxThumbnailClient, RobloxThumbnailClient
 from .util import Clock, SystemClock
 
 
@@ -55,6 +56,7 @@ def build_app(
     resolver: RobloxResolver,
     provider: FlagProvider,
     bloxlink: BloxlinkClient | None = None,
+    thumbnails: RobloxThumbnailClient | None = None,
     clock: Clock | None = None,
     ban_dm_template: str | None = None,
 ) -> App:
@@ -65,7 +67,7 @@ def build_app(
     )
     review_queue = ReviewQueue(
         guild_id=cfg.guild_id, store=store, poster=poster, banner=banner, gateway=gateway, clock=clock,
-        mod_role_id=cfg.mod_role_id, report_only=cfg.report_only,
+        mod_role_id=cfg.mod_role_id, report_only=cfg.report_only, thumbnails=thumbnails,
     )
     budget = DailyBudget(
         guild_id=cfg.guild_id, store=store, clock=clock, api="bloxlink",
@@ -128,6 +130,17 @@ def build_shared_roblox_resolver(global_cfg: GlobalConfig, session: aiohttp.Clie
     return HttpRobloxResolver(roblox_req, base_url=global_cfg.roblox_base_url, batch_size=global_cfg.roblox_batch_size)
 
 
+def build_shared_thumbnail_client(global_cfg: GlobalConfig, session: aiohttp.ClientSession) -> RobloxThumbnailClient:
+    """Same reasoning as the resolver above: no per-guild key, so one shared client and throttle."""
+    rl = global_cfg.rate_limit
+    thumb_req = AiohttpRequester(
+        session, throttle=Throttle(rl.roblox_thumbnail_min_interval_s), timeout_s=rl.http_timeout_s,
+        max_retries=rl.http_max_retries, backoff_base_s=rl.http_backoff_base_s, backoff_max_s=rl.http_backoff_max_s,
+        name="roblox-thumbnails",
+    )
+    return HttpRobloxThumbnailClient(thumb_req, base_url=global_cfg.roblox_thumbnails_base_url)
+
+
 class AppRegistry:
     """Lazily builds and caches one App per guild. Call invalidate() after /setup or /config changes
     anything that feeds into Config or the HTTP clients (keys, batch/base-url settings)."""
@@ -142,6 +155,7 @@ class AppRegistry:
         self._session = session
         self._ban_dm_default = ban_dm_default
         self._resolver = build_shared_roblox_resolver(global_cfg, session)
+        self._thumbnails = build_shared_thumbnail_client(global_cfg, session)
         self._apps: dict[int, App] = {}
 
     @property
@@ -166,7 +180,7 @@ class AppRegistry:
         dm_template = settings.effective_ban_dm_text(self._ban_dm_default)
         app = build_app(
             cfg, store=self._store, gateway=gateway, poster=poster, resolver=self._resolver,
-            provider=provider, bloxlink=bloxlink, ban_dm_template=dm_template,
+            provider=provider, bloxlink=bloxlink, thumbnails=self._thumbnails, ban_dm_template=dm_template,
         )
         self._apps[guild_id] = app
         return app

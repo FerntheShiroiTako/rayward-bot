@@ -75,6 +75,7 @@ class RetryConfig:
 @dataclass(frozen=True)
 class RateLimitConfig:
     roblox_min_interval_s: float = 1.0
+    roblox_thumbnail_min_interval_s: float = 1.0
     rotector_min_interval_s: float = 0.2
     # Bloxlink is one request per member with no batch endpoint, and its published limit could not be
     # verified, so this defaults deliberately slow: ~10 requests/second.
@@ -95,6 +96,7 @@ class GlobalConfig:
     master_key: str  # encrypts/decrypts per-guild API keys at rest (banbot/crypto.py)
     rayward_base_url: str = "https://roscoe.rayward.app"
     roblox_base_url: str = "https://users.roblox.com"
+    roblox_thumbnails_base_url: str = "https://thumbnails.roblox.com"
     bloxlink_base_url: str = "https://api.blox.link"
     bloxlink_daily_limit: int = 2000  # Bloxlink Server API quota per UTC day, per guild's own key
     bloxlink_daily_reserve: int = 200  # kept back from sweeps so member-join checks keep working all day
@@ -129,6 +131,7 @@ class GlobalConfig:
             master_key=_required(env, "MASTER_KEY"),
             rayward_base_url=(_str(env, "RAYWARD_BASE_URL", "https://roscoe.rayward.app") or "").rstrip("/"),
             roblox_base_url=(_str(env, "ROBLOX_BASE_URL", "https://users.roblox.com") or "").rstrip("/"),
+            roblox_thumbnails_base_url=(_str(env, "ROBLOX_THUMBNAILS_BASE_URL", "https://thumbnails.roblox.com") or "").rstrip("/"),
             bloxlink_base_url=(_str(env, "BLOXLINK_BASE_URL", "https://api.blox.link") or "").rstrip("/"),
             bloxlink_daily_limit=_int(env, "BLOXLINK_DAILY_LIMIT", 2000),
             bloxlink_daily_reserve=_int(env, "BLOXLINK_DAILY_RESERVE", 200),
@@ -146,6 +149,7 @@ class GlobalConfig:
             ),
             rate_limit=RateLimitConfig(
                 roblox_min_interval_s=_float(env, "ROBLOX_MIN_INTERVAL_S", 1.0),
+                roblox_thumbnail_min_interval_s=_float(env, "ROBLOX_THUMBNAIL_MIN_INTERVAL_S", 1.0),
                 rotector_min_interval_s=_float(env, "ROTECTOR_MIN_INTERVAL_S", 0.2),
                 bloxlink_min_interval_s=_float(env, "BLOXLINK_MIN_INTERVAL_S", 0.1),
                 http_timeout_s=_float(env, "HTTP_TIMEOUT_S", 15.0),

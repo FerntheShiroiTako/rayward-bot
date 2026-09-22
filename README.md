@@ -223,7 +223,10 @@ for the server (pending, approved, denied, and reported) in two forms, picked wi
 ## Review queue
 
 Cases are posted to the mod channel as an embed (member, Roblox account, status, why it's here, how the
-account was linked, and any provider detail) with **Ban** / **Dismiss** buttons.
+account was linked, and any provider detail) with **Ban** / **Dismiss** buttons. If the flagged Roblox
+account has a renderable avatar, the embed's thumbnail shows their current headshot (Roblox's public
+thumbnail API, no key needed). This is purely cosmetic: a failed or missing lookup just means the embed
+posts with no picture, never a delay to the detection itself.
 
 - Only members with the mod role can press the buttons. The role is checked server-side at click time, so
   editing the message or replaying the interaction gets you nothing; everyone else gets an ephemeral "you

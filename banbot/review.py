@@ -13,6 +13,7 @@ from .enforcement import DECISION_MOD_APPROVED, Banner, BanOutcome, BanRequest
 from .flags import FlagResult
 from .gateway import Gateway, MemberNotFound
 from .store import ReviewRow, Store
+from .thumbnails import RobloxThumbnailClient
 from .util import Clock
 
 log = logging.getLogger(__name__)
@@ -74,6 +75,7 @@ class ReviewQueue:
         clock: Clock,
         mod_role_id: int,
         report_only: bool = False,
+        thumbnails: RobloxThumbnailClient | None = None,
     ):
         self._guild_id = guild_id
         self._store = store
@@ -83,6 +85,19 @@ class ReviewQueue:
         self._clock = clock
         self._mod_role_id = mod_role_id
         self.report_only = report_only
+        self._thumbnails = thumbnails
+
+    # ---------------------------------------------------------------- avatar thumbnails (cosmetic)
+    async def _avatar_url(self, roblox_id: int | None) -> str | None:
+        """Never raises, never blocks a detection - a miss just means the embed posts with no picture."""
+        if self._thumbnails is None or roblox_id is None:
+            return None
+        try:
+            found = await self._thumbnails.lookup_headshots([roblox_id])
+        except Exception:
+            log.info("avatar thumbnail lookup raised for roblox=%s; posting without a picture", roblox_id)
+            return None
+        return found.get(roblox_id)
 
     # ---------------------------------------------------------------- report-only mode
     async def report(self, case: ReviewCase) -> tuple[ReviewRow, bool]:
@@ -100,6 +115,7 @@ class ReviewQueue:
             raw_response_json=case.flag.raw_json(),
             summary=case.flag.detail,
             identity_source=case.identity_source,
+            avatar_url=await self._avatar_url(case.roblox_id),
             at=self._clock.now(),
         )
         if not created:
@@ -139,6 +155,7 @@ class ReviewQueue:
             raw_response_json=case.flag.raw_json(),
             summary=case.flag.detail,
             identity_source=case.identity_source,
+            avatar_url=await self._avatar_url(case.roblox_id),
             at=self._clock.now(),
         )
         if not created:
