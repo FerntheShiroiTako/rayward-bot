@@ -95,7 +95,11 @@ class ConfigPanel(discord.ui.View):
 
     async def refresh(self, interaction: discord.Interaction) -> None:
         self.settings = self.store.get_guild_settings(self.guild.id) or self.settings
-        await interaction.response.edit_message(embed=summary_embed(self.settings, self.guild, self.tier), view=self)
+        embed = summary_embed(self.settings, self.guild, self.tier)
+        if interaction.response.is_done():
+            await interaction.message.edit(embed=embed, view=self)
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
 
 
 # ---------------------------------------------------------------------- selects (role / channel)
