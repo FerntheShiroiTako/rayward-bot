@@ -1,0 +1,5 @@
+You have been removed from {server}.
+
+The Roblox account linked to your Discord profile ({roblox_username}, ID {roblox_id}) is listed as "{status}" in the Rotector database, which this server uses to screen members.
+
+Rotector is an independent service and this server cannot change its records. If you believe the listing is wrong, you can appeal directly with Rotector: https://rotector.com

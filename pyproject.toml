@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "banbot"
+version = "0.1.0"
+description = "Discord bot that checks members' linked Roblox accounts against Rayward/Rotector flag data"
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py>=2.4,<3",
+    "aiohttp>=3.9",
+    "python-dotenv>=1.0",
+    "cryptography>=42",
+]
+
+[tool.setuptools.packages.find]
+include = ["banbot*"]
