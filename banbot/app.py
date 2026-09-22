@@ -133,8 +133,8 @@ def build_shared_roblox_resolver(global_cfg: GlobalConfig, session: aiohttp.Clie
 def build_shared_thumbnail_client(global_cfg: GlobalConfig, session: aiohttp.ClientSession) -> RobloxThumbnailClient:
     """Same reasoning as the resolver above: no per-guild key, so one shared client and throttle."""
     rl = global_cfg.rate_limit
-    thumb_req = AiohttpRequester(
-        session, throttle=Throttle(rl.roblox_thumbnail_min_interval_s), timeout_s=rl.http_timeout_s,
+    thumb_req = ThreadedHttpRequester(
+        throttle=Throttle(rl.roblox_thumbnail_min_interval_s), timeout_s=rl.http_timeout_s,
         max_retries=rl.http_max_retries, backoff_base_s=rl.http_backoff_base_s, backoff_max_s=rl.http_backoff_max_s,
         name="roblox-thumbnails",
     )
