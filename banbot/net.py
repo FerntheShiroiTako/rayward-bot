@@ -6,10 +6,13 @@ never as "clean".
 from __future__ import annotations
 
 import asyncio
+import http.client
+import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -85,12 +88,11 @@ def _retry_after_seconds(headers: Mapping[str, str]) -> float | None:
         return None
 
 
-class AiohttpRequester:
-    """Requester bound to one aiohttp session + one throttle + one backoff policy."""
+class BaseRequester:
+    """Shared throttle/retry/backoff loop. Subclasses only implement `_send` for one transport."""
 
     def __init__(
         self,
-        session: aiohttp.ClientSession,
         *,
         throttle: Throttle,
         timeout_s: float,
@@ -100,9 +102,8 @@ class AiohttpRequester:
         sleep: SleepFn | None = None,
         name: str = "http",
     ):
-        self._session = session
         self._throttle = throttle
-        self._timeout = aiohttp.ClientTimeout(total=timeout_s)
+        self._timeout_s = timeout_s
         self._max_retries = max(max_retries, 0)
         self._base = backoff_base_s
         self._cap = backoff_max_s
@@ -114,6 +115,11 @@ class AiohttpRequester:
         if ra is not None:
             return min(max(ra, 0.0), self._cap)
         return min(self._base * (2**attempt), self._cap)
+
+    async def _send(
+        self, method: str, url: str, json_body: Any, headers: Mapping[str, str] | None
+    ) -> tuple[int, Any, Mapping[str, str]]:
+        raise NotImplementedError
 
     async def __call__(
         self,
@@ -127,16 +133,8 @@ class AiohttpRequester:
         for attempt in range(self._max_retries + 1):
             await self._throttle.wait()
             try:
-                async with self._session.request(
-                    method, url, json=json_body, headers=headers, timeout=self._timeout
-                ) as resp:
-                    status = resp.status
-                    resp_headers = dict(resp.headers)
-                    try:
-                        body = await resp.json(content_type=None)
-                    except Exception:
-                        body = await resp.text()
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                status, body, resp_headers = await self._send(method, url, json_body, headers)
+            except (aiohttp.ClientError, asyncio.TimeoutError, TimeoutError, OSError) as e:
                 last_exc = NetworkError(f"{type(e).__name__}: {e}")
                 if attempt < self._max_retries:
                     delay = self._backoff(attempt)
@@ -156,3 +154,52 @@ class AiohttpRequester:
             return JsonResponse(status=status, body=body, headers=resp_headers)
         # Unreachable, but keeps type checkers happy.
         raise last_exc or NetworkError("no attempts made")
+
+
+class AiohttpRequester(BaseRequester):
+    """Requester bound to one aiohttp session + one throttle + one backoff policy."""
+
+    def __init__(self, session: aiohttp.ClientSession, **kwargs):
+        super().__init__(**kwargs)
+        self._session = session
+
+    async def _send(self, method, url, json_body, headers):
+        timeout = aiohttp.ClientTimeout(total=self._timeout_s)
+        async with self._session.request(method, url, json=json_body, headers=headers, timeout=timeout) as resp:
+            status = resp.status
+            resp_headers = dict(resp.headers)
+            try:
+                body = await resp.json(content_type=None)
+            except Exception:
+                body = await resp.text()
+        return status, body, resp_headers
+
+
+class ThreadedHttpRequester(BaseRequester):
+    """Same Requester contract as AiohttpRequester, over stdlib http.client in a worker thread instead
+    of aiohttp. Exists for hosts where aiohttp's connection is observed to hang indefinitely while
+    http.client succeeds - see banbot/app.py's use of this for Roblox's username/id endpoints."""
+
+    async def _send(self, method, url, json_body, headers):
+        return await asyncio.to_thread(self._send_blocking, method, url, json_body, headers)
+
+    def _send_blocking(self, method, url, json_body, headers):
+        parts = urlsplit(url)
+        conn = http.client.HTTPSConnection(parts.netloc, timeout=self._timeout_s)
+        try:
+            body_bytes = json.dumps(json_body).encode() if json_body is not None else b""
+            req_headers = dict(headers or {})
+            if json_body is not None:
+                req_headers.setdefault("Content-Type", "application/json")
+            path = parts.path + (f"?{parts.query}" if parts.query else "")
+            conn.request(method, path, body=body_bytes, headers=req_headers)
+            resp = conn.getresponse()
+            raw = resp.read()
+            resp_headers = dict(resp.getheaders())
+            try:
+                body = json.loads(raw.decode())
+            except Exception:
+                body = raw.decode(errors="replace")
+            return resp.status, body, resp_headers
+        finally:
+            conn.close()

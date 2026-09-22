@@ -23,7 +23,7 @@ from .identity import IdentityResolver
 from .flags import FlagProvider
 from .flags.rotector import RotectorProvider
 from .gateway import Gateway
-from .net import AiohttpRequester, Throttle
+from .net import AiohttpRequester, Throttle, ThreadedHttpRequester
 from .pipeline import Pipeline
 from .retrier import InconclusiveRetrier
 from .review import ReviewPoster, ReviewQueue
@@ -113,10 +113,15 @@ def build_guild_http_clients(
 
 def build_shared_roblox_resolver(global_cfg: GlobalConfig, session: aiohttp.ClientSession) -> RobloxResolver:
     """Roblox's username/id lookup takes no key and is rate-limited by source IP, not per guild, so every
-    guild shares one resolver (and one throttle) instead of each hammering Roblox independently."""
+    guild shares one resolver (and one throttle) instead of each hammering Roblox independently.
+
+    On aiohttp specifically, requests to /v1/users and /v1/usernames/users have been observed to hang
+    for the full timeout while curl and stdlib http.client succeed instantly against the same host from
+    the same machine - see banbot/net.py's ThreadedHttpRequester. Bloxlink and Rayward/Rotector are
+    unaffected and stay on AiohttpRequester (build_guild_http_clients, below)."""
     rl = global_cfg.rate_limit
-    roblox_req = AiohttpRequester(
-        session, throttle=Throttle(rl.roblox_min_interval_s), timeout_s=rl.http_timeout_s,
+    roblox_req = ThreadedHttpRequester(
+        throttle=Throttle(rl.roblox_min_interval_s), timeout_s=rl.http_timeout_s,
         max_retries=rl.http_max_retries, backoff_base_s=rl.http_backoff_base_s, backoff_max_s=rl.http_backoff_max_s,
         name="roblox",
     )
